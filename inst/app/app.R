@@ -91,12 +91,29 @@ ui <- fluidPage(
       selectInput("vline_year",
                   "Vertical Line Year",
                   choices = c("None" = "", sort(unique(population_data$year))),
-                  selected = "")
+                  selected = ""),
+      
+      # Apply Filter Button
+      br(),
+      actionButton("apply_filters", 
+                   "Apply Filters", 
+                   class = "btn-primary",
+                   style = "width: 100%; font-weight: bold; padding: 10px;"),
+      
+      # Reset Filter Button
+      br(),
+      actionButton("reset_filters", 
+                   "Reset Filters", 
+                   class = "btn-secondary",
+                   style = "width: 100%; padding: 8px;")
     ),
     
     # Main panel with outputs
     mainPanel(
       width = 9,
+      
+      # Status indicator
+      uiOutput("filter_status"),
       
       # Tabset for different views
       tabsetPanel(
@@ -129,8 +146,22 @@ ui <- fluidPage(
 # Server
 server <- function(input, output, session) {
   
-  # Reactive data filtering
+  # Reactive values to store filter state
+  filter_state <- reactiveValues(
+    applied = FALSE,
+    data = NULL
+  )
+  
+  # Reactive data filtering - only updates when Apply Filters is clicked
   filtered_data <- reactive({
+    if (!filter_state$applied) {
+      return(data.frame())  # Return empty data frame until filters are applied
+    }
+    return(filter_state$data)
+  })
+  
+  # Apply filters when button is clicked
+  observeEvent(input$apply_filters, {
     req(input$geography_level)
     
     geography_level <- if (input$geography_level == "all") {
@@ -154,7 +185,8 @@ server <- function(input, output, session) {
         filter(parent_geography %in% input$parent_geography)
     }
     
-    filter_population_data(
+    # Apply the filters and store the result
+    filter_state$data <- filter_population_data(
       filtered_pop_data,
       geography_level = geography_level,
       geography_name = geography_name,
@@ -163,6 +195,41 @@ server <- function(input, output, session) {
       years = input$years[1]:input$years[2],
       scenarios = input$scenarios
     )
+    
+    filter_state$applied <- TRUE
+  })
+  
+  # Reset filters when button is clicked
+  observeEvent(input$reset_filters, {
+    filter_state$applied <- FALSE
+    filter_state$data <- NULL
+    
+    # Reset all inputs to default values
+    updateSelectInput(session, "geography_level", selected = "state")
+    updatePickerInput(session, "age_groups", selected = get_unique_values(population_data, "age_group"))
+    updateCheckboxGroupInput(session, "sexes", selected = get_unique_values(population_data, "sex"))
+    updateSliderInput(session, "years", value = c(2020, 2030))
+    updateCheckboxGroupInput(session, "scenarios", selected = "Medium")
+    updateSelectInput(session, "vline_year", selected = "")
+  })
+  
+  # Filter status indicator
+  output$filter_status <- renderUI({
+    if (!filter_state$applied) {
+      div(
+        class = "alert alert-info",
+        style = "margin-bottom: 20px;",
+        tags$strong("ℹ️ Filters Not Applied"),
+        br(),
+        "Please select your filters and click 'Apply Filters' to see the data."
+      )
+    } else {
+      div(
+        class = "alert alert-success",
+        style = "margin-bottom: 20px;",
+        tags$strong("✅ Filters Applied")
+      )
+    }
   })
   
   # Dynamic parent geography selection
@@ -228,7 +295,13 @@ server <- function(input, output, session) {
     data <- filtered_data()
     
     if (nrow(data) == 0) {
-      return(plotly_empty())
+      if (!filter_state$applied) {
+        return(plotly_empty() %>% 
+               layout(title = "Please apply filters to see the population trends"))
+      } else {
+        return(plotly_empty() %>% 
+               layout(title = "No data available for the selected filters"))
+      }
     }
     
     # Aggregate data for trend plot using collapse
@@ -308,9 +381,15 @@ server <- function(input, output, session) {
     data <- filtered_data()
     
     if (nrow(data) == 0) {
-      return(ggplot() + 
-             annotate("text", x = 0.5, y = 0.5, label = "No data available", size = 6) +
-             theme_void())
+      if (!filter_state$applied) {
+        return(ggplot() + 
+               annotate("text", x = 0.5, y = 0.5, label = "Please apply filters to see demographics", size = 6) +
+               theme_void())
+      } else {
+        return(ggplot() + 
+               annotate("text", x = 0.5, y = 0.5, label = "No data available for the selected filters", size = 6) +
+               theme_void())
+      }
     }
     
     # Aggregate data for demographics comparison using collapse
@@ -360,6 +439,10 @@ server <- function(input, output, session) {
   output$data_table <- DT::renderDataTable({
     data <- filtered_data()
     
+    if (nrow(data) == 0) {
+      return(DT::datatable(data.frame(Message = "Please apply filters to see the data")))
+    }
+    
     DT::datatable(
       data,
       options = list(
@@ -405,7 +488,7 @@ server <- function(input, output, session) {
     data <- filtered_data()
     
     if (nrow(data) == 0) {
-      return(DT::datatable(data.frame()))
+      return(DT::datatable(data.frame(Message = "Please apply filters to see summary statistics")))
     }
     
     summary_data <- calculate_summary_stats(data)
