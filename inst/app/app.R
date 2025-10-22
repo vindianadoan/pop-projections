@@ -8,6 +8,7 @@ library(plotly)
 library(DT)
 library(shinyWidgets)
 library(shinyjs)
+library(collapse)
 
 # Load the package functions
 library(popprojections)
@@ -230,10 +231,10 @@ server <- function(input, output, session) {
       return(plotly_empty())
     }
     
-    # Aggregate data for trend plot
+    # Aggregate data for trend plot using collapse
     trend_data <- data %>%
-      group_by(year, scenario, geography_name) %>%
-      summarise(total_population = sum(population), .groups = "drop")
+      fgroup_by(year, scenario, geography_name) %>%
+      fsummarise(total_population = fsum(population))
     
     # Modern color palette
     colors <- c("Low" = "#ef4444", "Medium" = "#2563eb", "High" = "#10b981")
@@ -288,10 +289,10 @@ server <- function(input, output, session) {
       return(plotOutput("demographics_comparison_plot", height = "400px"))
     }
     
-    # Calculate number of unique combinations for facets
+    # Calculate number of unique combinations for facets using collapse
     unique_combinations <- data %>%
-      select(age_group, geography_name) %>%
-      distinct() %>%
+      fselect(age_group, geography_name) %>%
+      unique() %>%
       nrow()
     
     # Calculate dynamic height (base height + height per facet)
@@ -312,10 +313,10 @@ server <- function(input, output, session) {
              theme_void())
     }
     
-    # Aggregate data for demographics comparison
+    # Aggregate data for demographics comparison using collapse
     demo_data <- data %>%
-      group_by(age_group, geography_name, scenario, year) %>%
-      summarise(total_population = sum(population), .groups = "drop")
+      fgroup_by(age_group, geography_name, scenario, year) %>%
+      fsummarise(total_population = fsum(population))
     
     # Modern color palette for scenarios
     colors <- c("Low" = "#ef4444", "Medium" = "#2563eb", "High" = "#10b981")
@@ -324,7 +325,7 @@ server <- function(input, output, session) {
     p <- ggplot(demo_data, aes(x = year, y = total_population, color = scenario)) +
       geom_line(size = 1.2, alpha = 0.8) +
       geom_point(size = 2, alpha = 0.9) +
-      facet_wrap(~ age_group + geography_name, scales = "free") +
+      facet_wrap(~ geography_name + age_group, scales = "free") +
       {if (!is.null(input$vline_year) && input$vline_year != "" && !is.na(as.numeric(input$vline_year))) {
         geom_vline(xintercept = as.numeric(input$vline_year), linetype = "dashed", color = "red", alpha = 0.7, size = 1)
       }} +

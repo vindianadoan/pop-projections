@@ -27,7 +27,8 @@ Imports:
     lubridate,
     stringr,
     purrr,
-    magrittr
+    magrittr,
+    collapse
 Suggests:
     testthat,
     covr,

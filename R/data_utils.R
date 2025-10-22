@@ -64,7 +64,7 @@ filter_population_data <- function(data, geography_level = NULL, geography_name 
   return(filtered_data)
 }
 
-#' Get unique values for dropdowns
+#' Get unique values for dropdowns using collapse
 #'
 #' @param data Population data
 #' @param column Column name
@@ -74,23 +74,22 @@ get_unique_values <- function(data, column) {
   unique(data[[column]])
 }
 
-#' Calculate summary statistics
+#' Calculate summary statistics using collapse
 #'
 #' @param data Population data
 #' @return Summary statistics
 #' @export
 calculate_summary_stats <- function(data) {
   data %>%
-    dplyr::group_by(geography_level, geography_name, year, scenario) %>%
-    dplyr::summarise(
-      total_population = sum(population, na.rm = TRUE),
-      male_population = sum(population[sex == "Male"], na.rm = TRUE),
-      female_population = sum(population[sex == "Female"], na.rm = TRUE),
-      .groups = "drop"
+    fgroup_by(geography_level, geography_name, year, scenario) %>%
+    fsummarise(
+      total_population = fsum(population, na.rm = TRUE),
+      male_population = fsum(population[sex == "Male"], na.rm = TRUE),
+      female_population = fsum(population[sex == "Female"], na.rm = TRUE)
     )
 }
 
-#' Get parent geographies for a given geography level
+#' Get parent geographies for a given geography level using collapse
 #'
 #' @param data Population data
 #' @param geography_level Geography level
@@ -101,14 +100,13 @@ get_parent_geographies <- function(data, geography_level) {
     return(character(0))
   }
   
-  data %>%
-    filter(geography_level == !!geography_level) %>%
-    pull(parent_geography) %>%
-    unique() %>%
-    sort()
+  # Use subset with logical indexing instead of fsubset
+  subset_data <- data[data$geography_level == geography_level, ]
+  unique_parents <- unique(subset_data$parent_geography)
+  sort(unique_parents)
 }
 
-#' Get child geographies for a given parent
+#' Get child geographies for a given parent using collapse
 #'
 #' @param data Population data
 #' @param geography_level Geography level
@@ -118,23 +116,19 @@ get_parent_geographies <- function(data, geography_level) {
 get_child_geographies <- function(data, geography_level, parent_geography = NULL) {
   if (is.null(parent_geography)) {
     # Return all geographies for this level
-    data %>%
-      filter(geography_level == !!geography_level) %>%
-      pull(geography_name) %>%
-      unique() %>%
-      sort()
+    subset_data <- data[data$geography_level == geography_level, ]
+    unique_children <- unique(subset_data$geography_name)
+    sort(unique_children)
   } else {
     # Return geographies filtered by parent
-    data %>%
-      filter(geography_level == !!geography_level,
-             parent_geography == !!parent_geography) %>%
-      pull(geography_name) %>%
-      unique() %>%
-      sort()
+    subset_data <- data[data$geography_level == geography_level & 
+                       data$parent_geography == parent_geography, ]
+    unique_children <- unique(subset_data$geography_name)
+    sort(unique_children)
   }
 }
 
-#' Get geography hierarchy information
+#' Get geography hierarchy information using collapse
 #'
 #' @param data Population data
 #' @return List with geography hierarchy structure
