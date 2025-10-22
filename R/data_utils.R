@@ -74,18 +74,19 @@ get_unique_values <- function(data, column) {
   unique(data[[column]])
 }
 
-#' Calculate summary statistics using collapse
+#' Calculate summary statistics using dplyr (more reliable)
 #'
 #' @param data Population data
 #' @return Summary statistics
 #' @export
 calculate_summary_stats <- function(data) {
   data %>%
-    fgroup_by(geography_level, geography_name, year, scenario) %>%
-    fsummarise(
-      total_population = fsum(population, na.rm = TRUE),
-      male_population = fsum(population[sex == "Male"], na.rm = TRUE),
-      female_population = fsum(population[sex == "Female"], na.rm = TRUE)
+    dplyr::group_by(geography_level, geography_name, year, scenario) %>%
+    dplyr::summarise(
+      total_population = sum(population, na.rm = TRUE),
+      male_population = sum(population[sex == "Male"], na.rm = TRUE),
+      female_population = sum(population[sex == "Female"], na.rm = TRUE),
+      .groups = "drop"
     )
 }
 
