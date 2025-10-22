@@ -1,0 +1,32 @@
+# .gitignore
+
+# R
+.Rhistory
+.RData
+.Ruserdata
+.Rproj.user/
+
+# R Package
+*.tar.gz
+*.Rcheck/
+.Rbuildignore
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+
+# Logs
+*.log
+
+# Data files (if you want to ignore them)
+# *.rds
+# *.csv
+# *.xlsx

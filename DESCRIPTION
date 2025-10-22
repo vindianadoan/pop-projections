@@ -1,0 +1,35 @@
+Package: popprojections
+Title: Population Projections Dashboard
+Version: 0.1.0
+Authors@R: person("Your Name", "Your Email", role = c("aut", "cre"))
+Description: A Shiny dashboard for comparing population projections across ABS geographies.
+License: MIT
+Encoding: UTF-8
+LazyData: true
+RoxygenNote: 7.2.3
+Depends:
+    R (>= 4.0.0)
+Imports:
+    shiny,
+    dplyr,
+    ggplot2,
+    plotly,
+    DT,
+    sf,
+    leaflet,
+    shinyWidgets,
+    shinyjs,
+    absmapsdata,
+    tidyr,
+    scales,
+    viridis,
+    RColorBrewer,
+    lubridate,
+    stringr,
+    purrr,
+    magrittr
+Suggests:
+    testthat,
+    covr,
+    devtools,
+    usethis

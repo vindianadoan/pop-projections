@@ -1,0 +1,155 @@
+#' Load and prepare population data
+#'
+#' @return Processed population data
+#' @export
+load_population_data <- function() {
+  # Check if data exists, if not generate it
+  data_file <- system.file("data", "population_projections.rds", package = "popprojections")
+  
+  if (file.exists(data_file)) {
+    readRDS(data_file)
+  } else {
+    # Generate data if it doesn't exist
+    generate_population_data()
+  }
+}
+
+#' Filter population data based on user selections
+#'
+#' @param data Population data
+#' @param geography_level Selected geography level
+#' @param geography_name Selected geography name
+#' @param age_groups Selected age groups
+#' @param sexes Selected sexes
+#' @param years Selected years
+#' @param scenarios Selected scenarios
+#' @return Filtered data
+#' @export
+filter_population_data <- function(data, geography_level = NULL, geography_name = NULL,
+                                  age_groups = NULL, sexes = NULL, years = NULL,
+                                  scenarios = NULL) {
+  filtered_data <- data
+  
+  if (!is.null(geography_level)) {
+    filtered_data <- filtered_data[filtered_data$geography_level %in% geography_level, ]
+  }
+  
+  if (!is.null(geography_name)) {
+    filtered_data <- filtered_data[filtered_data$geography_name %in% geography_name, ]
+  }
+  
+  if (!is.null(age_groups)) {
+    filtered_data <- filtered_data[filtered_data$age_group %in% age_groups, ]
+  }
+  
+  if (!is.null(sexes)) {
+    filtered_data <- filtered_data[filtered_data$sex %in% sexes, ]
+  }
+  
+  if (!is.null(years)) {
+    filtered_data <- filtered_data[filtered_data$year %in% years, ]
+  }
+  
+  if (!is.null(scenarios)) {
+    filtered_data <- filtered_data[filtered_data$scenario %in% scenarios, ]
+  }
+  
+  return(filtered_data)
+}
+
+#' Get unique values for dropdowns
+#'
+#' @param data Population data
+#' @param column Column name
+#' @return Unique values
+#' @export
+get_unique_values <- function(data, column) {
+  unique(data[[column]])
+}
+
+#' Calculate summary statistics
+#'
+#' @param data Population data
+#' @return Summary statistics
+#' @export
+calculate_summary_stats <- function(data) {
+  data %>%
+    dplyr::group_by(geography_level, geography_name, year, scenario) %>%
+    dplyr::summarise(
+      total_population = sum(population, na.rm = TRUE),
+      male_population = sum(population[sex == "Male"], na.rm = TRUE),
+      female_population = sum(population[sex == "Female"], na.rm = TRUE),
+      .groups = "drop"
+    )
+}
+
+#' Get parent geographies for a given geography level
+#'
+#' @param data Population data
+#' @param geography_level Geography level
+#' @return Vector of parent geography names
+#' @export
+get_parent_geographies <- function(data, geography_level) {
+  if (geography_level == "national") {
+    return(character(0))
+  }
+  
+  data %>%
+    filter(geography_level == !!geography_level) %>%
+    pull(parent_geography) %>%
+    unique() %>%
+    sort()
+}
+
+#' Get child geographies for a given parent
+#'
+#' @param data Population data
+#' @param geography_level Geography level
+#' @param parent_geography Parent geography name
+#' @return Vector of child geography names
+#' @export
+get_child_geographies <- function(data, geography_level, parent_geography = NULL) {
+  if (is.null(parent_geography)) {
+    # Return all geographies for this level
+    data %>%
+      filter(geography_level == !!geography_level) %>%
+      pull(geography_name) %>%
+      unique() %>%
+      sort()
+  } else {
+    # Return geographies filtered by parent
+    data %>%
+      filter(geography_level == !!geography_level,
+             parent_geography == !!parent_geography) %>%
+      pull(geography_name) %>%
+      unique() %>%
+      sort()
+  }
+}
+
+#' Get geography hierarchy information
+#'
+#' @param data Population data
+#' @return List with geography hierarchy structure
+#' @export
+get_geography_hierarchy <- function(data) {
+  hierarchy <- list()
+  
+  for (level in unique(data$geography_level)) {
+    hierarchy[[level]] <- list()
+    
+    if (level == "national") {
+      hierarchy[[level]] <- unique(data$geography_name[data$geography_level == level])
+    } else {
+      level_data <- data[data$geography_level == level, ]
+      parents <- unique(level_data$parent_geography)
+      
+      for (parent in parents) {
+        children <- unique(level_data$geography_name[level_data$parent_geography == parent])
+        hierarchy[[level]][[parent]] <- children
+      }
+    }
+  }
+  
+  return(hierarchy)
+}
