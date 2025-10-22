@@ -12,29 +12,35 @@ library(shinyjs)
 # Load the package functions
 library(popprojections)
 
-# Load data
-population_data <- generate_population_data()
+# Load pre-generated data efficiently
+cat("Loading population data...\n")
+population_data <- load_population_data()
+cat("Data loaded successfully!\n")
 
 # UI
 ui <- fluidPage(
   useShinyjs(),
   
-  # Include custom CSS
+  # Include custom CSS and fonts
   tags$head(
-    tags$link(rel = "stylesheet", type = "text/css", href = "style.css")
+    tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
+    tags$title("Population Projections Dashboard")
   ),
   
-  # Application title
-  titlePanel("Population Projections Dashboard"),
+  # Header
+  h1("Population Projections Dashboard"),
+  p("Compare population projections across ABS geographies"),
   
   # Sidebar with controls
   sidebarLayout(
     sidebarPanel(
       width = 3,
       
+      h4("Filters & Controls"),
+      
       # Geography Level Selection
       selectInput("geography_level", 
-                  "Geography Level:",
+                  "Geography Level",
                   choices = c("All" = "all", 
                              "National" = "national",
                              "State" = "state", 
@@ -51,21 +57,23 @@ ui <- fluidPage(
       
       # Age Group Selection
       pickerInput("age_groups",
-                  "Age Groups:",
+                  "Age Groups",
                   choices = get_unique_values(population_data, "age_group"),
                   selected = get_unique_values(population_data, "age_group"),
-                  options = list(`actions-box` = TRUE),
+                  options = list(`actions-box` = TRUE, 
+                                `live-search` = TRUE,
+                                `selected-text-format` = "count > 3"),
                   multiple = TRUE),
       
       # Sex Selection
       checkboxGroupInput("sexes",
-                         "Sex:",
+                         "Sex",
                          choices = get_unique_values(population_data, "sex"),
                          selected = get_unique_values(population_data, "sex")),
       
       # Year Range Selection
       sliderInput("years",
-                  "Year Range:",
+                  "Year Range",
                   min = min(population_data$year),
                   max = max(population_data$year),
                   value = c(2020, 2030),
@@ -74,17 +82,15 @@ ui <- fluidPage(
       
       # Scenario Selection
       checkboxGroupInput("scenarios",
-                         "Scenarios:",
+                         "Scenarios",
                          choices = get_unique_values(population_data, "scenario"),
                          selected = "Medium"),
       
-      # Action Buttons
-      br(),
-      actionButton("update_plot", "Update Visualizations", 
-                   class = "btn-primary"),
-      br(), br(),
-      actionButton("export_data", "Export Data", 
-                   class = "btn-success")
+      # Vertical Line Year Selection
+      selectInput("vline_year",
+                  "Vertical Line Year",
+                  choices = c("None" = "", sort(unique(population_data$year))),
+                  selected = "")
     ),
     
     # Main panel with outputs
@@ -97,16 +103,12 @@ ui <- fluidPage(
         
         # Population Trends Tab
         tabPanel("Population Trends",
-                 plotlyOutput("population_trend_plot", height = "500px"),
-                 br(),
-                 plotlyOutput("age_pyramid_plot", height = "400px")
+                 plotlyOutput("population_trend_plot", height = "500px")
         ),
         
-        # Geographic Comparison Tab
-        tabPanel("Geographic Comparison",
-                 plotlyOutput("geographic_comparison_plot", height = "500px"),
-                 br(),
-                 plotlyOutput("geographic_bar_plot", height = "400px")
+        # Demographics Comparison Tab
+        tabPanel("Demographics Comparison",
+                 uiOutput("demographics_plot_ui")
         ),
         
         # Data Table Tab
@@ -170,12 +172,17 @@ server <- function(input, output, session) {
     
     parent_geographies <- get_parent_geographies(population_data, input$geography_level)
     
-    pickerInput("parent_geography",
-                "Filter by Parent Geography:",
-                choices = c("All" = "all", parent_geographies),
-                selected = "all",
-                options = list(`actions-box` = TRUE),
-                multiple = TRUE)
+    div(
+      tags$label("Filter by Parent Geography"),
+      pickerInput("parent_geography",
+                  NULL,
+                  choices = c("All" = "all", parent_geographies),
+                  selected = "all",
+                  options = list(`actions-box` = TRUE,
+                                `live-search` = TRUE,
+                                `selected-text-format` = "count > 2"),
+                  multiple = TRUE)
+    )
   })
   
   # Dynamic geography name selection
@@ -202,12 +209,17 @@ server <- function(input, output, session) {
       return(NULL)
     }
     
-    pickerInput("geography_name",
-                "Geography:",
-                choices = available_geographies,
-                selected = available_geographies[1],
-                options = list(`actions-box` = TRUE),
-                multiple = TRUE)
+    div(
+      tags$label("Geography"),
+      pickerInput("geography_name",
+                  NULL,
+                  choices = available_geographies,
+                  selected = available_geographies[1],
+                  options = list(`actions-box` = TRUE,
+                                `live-search` = TRUE,
+                                `selected-text-format` = "count > 3"),
+                  multiple = TRUE)
+    )
   })
   
   # Population trend plot
@@ -223,99 +235,124 @@ server <- function(input, output, session) {
       group_by(year, scenario, geography_name) %>%
       summarise(total_population = sum(population), .groups = "drop")
     
+    # Modern color palette
+    colors <- c("Low" = "#ef4444", "Medium" = "#2563eb", "High" = "#10b981")
+    
     p <- ggplot(trend_data, aes(x = year, y = total_population, 
-                                color = scenario, group = interaction(scenario, geography_name))) +
-      geom_line(size = 1) +
-      geom_point(size = 2) +
-      labs(title = "Population Projections Over Time",
+                                color = scenario, linetype = geography_name,
+                                group = interaction(scenario, geography_name))) +
+      geom_line(size = 1.2, alpha = 0.8) +
+      geom_point(size = 3, alpha = 0.9) +
+      {if (!is.null(input$vline_year) && input$vline_year != "" && !is.na(as.numeric(input$vline_year))) {
+        geom_vline(xintercept = as.numeric(input$vline_year), linetype = "dashed", color = "red", alpha = 0.7, size = 1)
+      }} +
+      scale_color_manual(values = colors) +
+      scale_linetype_discrete(name = "Geography") +
+      scale_x_continuous(breaks = scales::pretty_breaks(n = 5)) +
+      scale_y_continuous(labels = scales::comma) +
+      labs(title = "📈 Population Projections Over Time",
            x = "Year",
            y = "Total Population",
+           color = "Scenario",
+           linetype = "Geography") +
+      theme_minimal() +
+      theme(
+        plot.title = element_text(size = 16, face = "bold", color = "#1f2937"),
+        axis.title = element_text(size = 12, color = "#374151"),
+        axis.text = element_text(size = 10, color = "#6b7280"),
+        legend.position = "bottom",
+        legend.direction = "horizontal",
+        legend.box = "horizontal",
+        legend.title = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 10),
+        legend.key.width = unit(2, "cm"),
+        panel.grid.major = element_line(color = "#e5e7eb", size = 0.5),
+        panel.grid.minor = element_line(color = "#f3f4f6", size = 0.3),
+        plot.background = element_rect(fill = "white", color = NA),
+        panel.background = element_rect(fill = "white", color = NA)
+      )
+    
+    ggplotly(p, tooltip = c("x", "y", "colour", "linetype")) %>%
+      layout(
+        font = list(family = "Inter, sans-serif"),
+        plot_bgcolor = "rgba(0,0,0,0)",
+        paper_bgcolor = "rgba(0,0,0,0)"
+      )
+  })
+  
+  # Dynamic UI for demographics plot
+  output$demographics_plot_ui <- renderUI({
+    data <- filtered_data()
+    
+    if (nrow(data) == 0) {
+      return(plotOutput("demographics_comparison_plot", height = "400px"))
+    }
+    
+    # Calculate number of unique combinations for facets
+    unique_combinations <- data %>%
+      select(age_group, geography_name) %>%
+      distinct() %>%
+      nrow()
+    
+    # Calculate dynamic height (base height + height per facet)
+    base_height <- 200  # Base height for title, legend, etc.
+    height_per_facet <- 40  # Height per facet
+    dynamic_height <- base_height + (unique_combinations * height_per_facet)
+    
+    plotOutput("demographics_comparison_plot", height = paste0(dynamic_height, "px"))
+  })
+  
+  # Demographics comparison plot
+  output$demographics_comparison_plot <- renderPlot({
+    data <- filtered_data()
+    
+    if (nrow(data) == 0) {
+      return(ggplot() + 
+             annotate("text", x = 0.5, y = 0.5, label = "No data available", size = 6) +
+             theme_void())
+    }
+    
+    # Aggregate data for demographics comparison
+    demo_data <- data %>%
+      group_by(age_group, geography_name, scenario, year) %>%
+      summarise(total_population = sum(population), .groups = "drop")
+    
+    # Modern color palette for scenarios
+    colors <- c("Low" = "#ef4444", "Medium" = "#2563eb", "High" = "#10b981")
+    
+    # Create faceted plot
+    p <- ggplot(demo_data, aes(x = year, y = total_population, color = scenario)) +
+      geom_line(size = 1.2, alpha = 0.8) +
+      geom_point(size = 2, alpha = 0.9) +
+      facet_wrap(~ age_group + geography_name, scales = "free") +
+      {if (!is.null(input$vline_year) && input$vline_year != "" && !is.na(as.numeric(input$vline_year))) {
+        geom_vline(xintercept = as.numeric(input$vline_year), linetype = "dashed", color = "red", alpha = 0.7, size = 1)
+      }} +
+      scale_color_manual(values = colors) +
+      scale_x_continuous(breaks = scales::pretty_breaks(n = 5)) +
+      scale_y_continuous(labels = scales::comma) +
+      labs(title = "📊 Demographics Comparison by Age Group and Geography",
+           x = "Year",
+           y = "Population",
            color = "Scenario") +
       theme_minimal() +
-      theme(legend.position = "bottom")
+      theme(
+        plot.title = element_text(size = 16, face = "bold", color = "#1f2937"),
+        axis.title = element_text(size = 12, color = "#374151"),
+        axis.text = element_text(size = 10, color = "#6b7280"),
+        axis.text.x = element_text(angle = 0, hjust = 0.5),
+        legend.position = "bottom",
+        legend.title = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 10),
+        strip.text = element_text(size = 10, face = "bold", color = "#374151"),
+        strip.background = element_rect(fill = "#f3f4f6", color = "#e5e7eb"),
+        panel.grid.major = element_line(color = "#e5e7eb", size = 0.5),
+        panel.grid.minor = element_line(color = "#f3f4f6", size = 0.3),
+        plot.background = element_rect(fill = "white", color = NA),
+        panel.background = element_rect(fill = "white", color = NA)
+      )
     
-    ggplotly(p, tooltip = c("x", "y", "colour"))
-  })
-  
-  # Age pyramid plot
-  output$age_pyramid_plot <- renderPlotly({
-    data <- filtered_data()
-    
-    if (nrow(data) == 0) {
-      return(plotly_empty())
-    }
-    
-    # Create age pyramid data
-    pyramid_data <- data %>%
-      group_by(age_group, sex, scenario) %>%
-      summarise(population = sum(population), .groups = "drop") %>%
-      mutate(population = ifelse(sex == "Male", -population, population))
-    
-    p <- ggplot(pyramid_data, aes(x = age_group, y = population, fill = sex)) +
-      geom_bar(stat = "identity", position = "identity") +
-      coord_flip() +
-      labs(title = "Age-Sex Population Distribution",
-           x = "Age Group",
-           y = "Population",
-           fill = "Sex") +
-      theme_minimal() +
-      theme(legend.position = "bottom")
-    
-    ggplotly(p)
-  })
-  
-  # Geographic comparison plot
-  output$geographic_comparison_plot <- renderPlotly({
-    data <- filtered_data()
-    
-    if (nrow(data) == 0) {
-      return(plotly_empty())
-    }
-    
-    # Aggregate by geography
-    geo_data <- data %>%
-      group_by(geography_name, scenario) %>%
-      summarise(total_population = sum(population), .groups = "drop")
-    
-    p <- ggplot(geo_data, aes(x = reorder(geography_name, total_population), 
-                              y = total_population, fill = scenario)) +
-      geom_bar(stat = "identity", position = "dodge") +
-      coord_flip() +
-      labs(title = "Population by Geography",
-           x = "Geography",
-           y = "Total Population",
-           fill = "Scenario") +
-      theme_minimal() +
-      theme(legend.position = "bottom")
-    
-    ggplotly(p)
-  })
-  
-  # Geographic bar plot (alternative view)
-  output$geographic_bar_plot <- renderPlotly({
-    data <- filtered_data()
-    
-    if (nrow(data) == 0) {
-      return(plotly_empty())
-    }
-    
-    # Aggregate by geography and age group
-    geo_age_data <- data %>%
-      group_by(geography_name, age_group) %>%
-      summarise(total_population = sum(population), .groups = "drop")
-    
-    p <- ggplot(geo_age_data, aes(x = age_group, y = total_population, 
-                                  fill = geography_name)) +
-      geom_bar(stat = "identity", position = "dodge") +
-      labs(title = "Population by Age Group and Geography",
-           x = "Age Group",
-           y = "Total Population",
-           fill = "Geography") +
-      theme_minimal() +
-      theme(legend.position = "bottom",
-            axis.text.x = element_text(angle = 45, hjust = 1))
-    
-    ggplotly(p)
+    print(p)
   })
   
   # Data table
@@ -328,11 +365,38 @@ server <- function(input, output, session) {
         pageLength = 25,
         scrollX = TRUE,
         dom = 'Bfrtip',
-        buttons = c('copy', 'csv', 'excel', 'pdf', 'print')
+        buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+        language = list(
+          search = "Search:",
+          lengthMenu = "Show _MENU_ entries",
+          info = "Showing _START_ to _END_ of _TOTAL_ entries",
+          paginate = list(
+            first = "First",
+            last = "Last",
+            `next` = "Next",
+            previous = "Previous"
+          )
+        ),
+        initComplete = JS(
+          "function(settings, json) {",
+          "$(this.api().table().container()).css({'font-family': 'Inter, sans-serif'});",
+          "}"
+        )
       ),
       extensions = 'Buttons',
-      filter = 'top'
-    )
+      filter = 'top',
+      class = 'display compact hover',
+      rownames = FALSE
+    ) %>%
+      DT::formatStyle(
+        columns = names(data),
+        fontSize = '13px',
+        fontFamily = 'Inter, sans-serif'
+      ) %>%
+      DT::formatRound(
+        columns = 'population',
+        digits = 0
+      )
   })
   
   # Summary statistics table
@@ -349,30 +413,30 @@ server <- function(input, output, session) {
       summary_data,
       options = list(
         pageLength = 25,
-        scrollX = TRUE
+        scrollX = TRUE,
+        language = list(
+          search = "Search:",
+          lengthMenu = "Show _MENU_ entries",
+          info = "Showing _START_ to _END_ of _TOTAL_ entries"
+        ),
+        initComplete = JS(
+          "function(settings, json) {",
+          "$(this.api().table().container()).css({'font-family': 'Inter, sans-serif'});",
+          "}"
+        )
+      ),
+      class = 'display compact hover',
+      rownames = FALSE
+    ) %>%
+      DT::formatStyle(
+        columns = names(summary_data),
+        fontSize = '13px',
+        fontFamily = 'Inter, sans-serif'
+      ) %>%
+      DT::formatRound(
+        columns = c('total_population', 'male_population', 'female_population'),
+        digits = 0
       )
-    )
-  })
-  
-  # Export data functionality
-  observeEvent(input$export_data, {
-    data <- filtered_data()
-    
-    if (nrow(data) > 0) {
-      # Create filename with timestamp
-      filename <- paste0("population_projections_", Sys.Date(), ".csv")
-      
-      # Download handler
-      output$download_data <- downloadHandler(
-        filename = filename,
-        content = function(file) {
-          write.csv(data, file, row.names = FALSE)
-        }
-      )
-      
-      # Trigger download
-      shinyjs::runjs("$('#download_data')[0].click();")
-    }
   })
 }
 

@@ -11,41 +11,59 @@ A comprehensive R Shiny dashboard for comparing population projections across mu
 - **Data Export**: Export filtered data in multiple formats
 - **Responsive Design**: Modern UI with ShinyWidgets
 
-## Installation
+## Data Management
 
-### Prerequisites
+The dashboard uses pre-generated data for optimal performance. You can either use synthetic data or replace it with real population projection data.
 
-- R version 4.0.0 or higher
-- Required R packages (see DESCRIPTION file)
+### Quick Setup
 
-### Setup
+1. **Generate synthetic data** (one-time setup):
+   ```r
+   source("setup.R")
+   ```
 
-1. Clone or download this repository
-2. Install dependencies:
+2. **Run the dashboard**:
+   ```r
+   run_app()
+   ```
 
+### Data Management Options
+
+#### Generate Synthetic Data
 ```r
-pkgs <- c(
-  "shiny", "dplyr", "ggplot2", "plotly", "DT", "sf",
-  "leaflet", "shinyWidgets", "shinyjs", "tidyr",
-  "scales", "viridis", "RColorBrewer", "lubridate",
-  "stringr", "purrr", "magrittr", "devtools"
-)
-options(repos = c(CRAN = "https://packagemanager.posit.co/cran/latest"))
-renv::install(pkgs)
-
-# GitHub package (no devtools needed)
-renv::install("wfmackey/absmapsdata")
+source("scripts/generate_data.R")
 ```
 
-3. Build and install the package:
-
+#### Load Real Data
 ```r
-# Build the package
-devtools::load_all()
-
-# Or install the package
-devtools::install()
+source("scripts/load_real_data.R")
 ```
+
+#### Data Management Utilities
+```r
+source("data_management.R")
+data_management_menu()  # Interactive menu
+```
+
+### Data Structure Requirements
+
+If you want to use real data, your dataset must have these columns:
+
+- `geography_level`: Geography level (national, state, sa4, sa3, gcc)
+- `geography_name`: Name of the geography
+- `parent_geography`: Parent geography name (NA for national)
+- `year`: Projection year (numeric)
+- `age_group`: Age group (e.g., '0-4', '5-9', '85+')
+- `sex`: Sex (Male, Female)
+- `population`: Population count (numeric)
+- `scenario`: Scenario name (e.g., 'Low', 'Medium', 'High')
+
+### File Locations
+
+- **Main data**: `data/population_projections.rds`
+- **CSV format**: `data/population_projections.csv`
+- **Metadata**: `data/data_summary.rds`
+- **Backups**: `data/backup_YYYYMMDD_HHMMSS/`
 
 ## Usage
 

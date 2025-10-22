@@ -6,11 +6,18 @@ load_population_data <- function() {
   # Check if data exists, if not generate it
   data_file <- system.file("data", "population_projections.rds", package = "popprojections")
   
+  # If not found in package, check project root
+  if (data_file == "" || !file.exists(data_file)) {
+    data_file <- "data/population_projections.rds"
+  }
+  
   if (file.exists(data_file)) {
-    readRDS(data_file)
+    cat("Loading data from:", data_file, "\n")
+    return(readRDS(data_file))
   } else {
-    # Generate data if it doesn't exist
-    generate_population_data()
+    cat("No pre-generated data found. Generating data now...\n")
+    cat("For faster startup, run: source('scripts/generate_data.R')\n")
+    return(generate_population_data())
   }
 }
 
