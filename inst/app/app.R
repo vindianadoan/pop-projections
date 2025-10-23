@@ -42,16 +42,18 @@ ui <- fluidPage(
       # Geography Level Selection
       selectInput("geography_level", 
                   "Geography Level",
-                  choices = c("All" = "all", 
-                             "National" = "national",
+                  choices = c("National" = "national",
                              "State" = "state", 
                              "SA4" = "sa4",
                              "SA3" = "sa3",
                              "GCC" = "gcc"),
                   selected = "state"),
       
-      # Parent Geography Selection (dynamic)
-      uiOutput("parent_geography_ui"),
+      # State Filter (for sub-state levels only)
+      uiOutput("state_filter_ui"),
+      
+      # GCC Filter (for SA3/SA4 levels only)
+      uiOutput("gcc_filter_ui"),
       
       # Geography Name Selection (dynamic)
       uiOutput("geography_name_ui"),
@@ -155,7 +157,8 @@ server <- function(input, output, session) {
   observe({
     # This reactive will trigger whenever any of these inputs change
     input$geography_level
-    input$parent_geography
+    input$state_filter
+    input$gcc_filter
     input$geography_name
     input$age_groups
     input$sexes
@@ -169,7 +172,8 @@ server <- function(input, output, session) {
       # Check if any current input differs from the last applied filters
       current_inputs <- list(
         geography_level = input$geography_level,
-        parent_geography = input$parent_geography,
+        state_filter = input$state_filter,
+        gcc_filter = input$gcc_filter,
         geography_name = input$geography_name,
         age_groups = input$age_groups,
         sexes = input$sexes,
@@ -258,11 +262,7 @@ server <- function(input, output, session) {
   observeEvent(input$apply_filters, {
     req(input$geography_level)
     
-    geography_level <- if (input$geography_level == "all") {
-      NULL
-    } else {
-      input$geography_level
-    }
+    geography_level <- input$geography_level
     
     geography_name <- if (geography_level == "national") {
       "Australia"  # Always set to Australia for national level
@@ -272,22 +272,54 @@ server <- function(input, output, session) {
       input$geography_name  # This is already a vector of selected geographies
     }
     
-    # Additional filtering by state if specified
+    # Use the full population data for filtering
     filtered_pop_data <- population_data
     
-    # Only apply parent geography filtering for sub-state levels (not for national)
-    if (!is.null(geography_level) && !is.null(input$parent_geography) && 
-        length(input$parent_geography) > 0 && 
-        geography_level != "national") {
+    # Apply state filtering for sub-state levels
+    if (!is.null(geography_level) && !is.null(input$state_filter) && 
+        length(input$state_filter) > 0 && 
+        geography_level %in% c("sa4", "sa3", "gcc")) {
       # Filter by selected states - check if the geography's parent is one of the selected states
       filtered_pop_data <- filtered_pop_data %>%
-        filter(parent_geography %in% input$parent_geography)
+        filter(parent_geography %in% input$state_filter)
+    }
+    
+    # Apply GCC filtering for SA3/SA4 levels
+    if (!is.null(geography_level) && !is.null(input$gcc_filter) && 
+        length(input$gcc_filter) > 0 && 
+        geography_level %in% c("sa3", "sa4")) {
+      # Create a mapping of SA3/SA4 to GCC regions based on the data structure
+      # For this synthetic data, we'll use a simple mapping based on geography names
+      gcc_mapping <- list(
+        "Greater Sydney" = c("Sydney Inner City", "Sydney Eastern Suburbs", "Sydney Inner West"),
+        "Greater Melbourne" = c("Melbourne City", "Melbourne Inner", "Melbourne South East"),
+        "Greater Brisbane" = c("Brisbane Inner", "Brisbane South", "Brisbane North"),
+        "Greater Adelaide" = c("Adelaide City", "Adelaide Hills", "Adelaide North"),
+        "Greater Perth" = c("Perth City", "Perth North", "Perth South"),
+        "Greater Hobart" = c(),
+        "Greater Darwin" = c(),
+        "Australian Capital Territory" = c()
+      )
+      
+      # Get all SA3/SA4 names that belong to the selected GCC regions
+      selected_sa_names <- c()
+      for (gcc in input$gcc_filter) {
+        if (gcc %in% names(gcc_mapping)) {
+          selected_sa_names <- c(selected_sa_names, gcc_mapping[[gcc]])
+        }
+      }
+      
+      if (length(selected_sa_names) > 0) {
+        filtered_pop_data <- filtered_pop_data %>%
+          filter(geography_name %in% selected_sa_names)
+      }
     }
     
     # Debug output
     cat("Debug apply_filters - geography_level:", geography_level, "\n")
+    cat("Debug apply_filters - state_filter:", paste(input$state_filter, collapse = ", "), "\n")
+    cat("Debug apply_filters - gcc_filter:", paste(input$gcc_filter, collapse = ", "), "\n")
     cat("Debug apply_filters - geography_name:", paste(geography_name, collapse = ", "), "\n")
-    cat("Debug apply_filters - parent_geography:", paste(input$parent_geography, collapse = ", "), "\n")
     cat("Debug apply_filters - age_groups:", paste(input$age_groups, collapse = ", "), "\n")
     cat("Debug apply_filters - sexes:", paste(input$sexes, collapse = ", "), "\n")
     cat("Debug apply_filters - years:", input$years[1], "to", input$years[2], "\n")
@@ -310,7 +342,8 @@ server <- function(input, output, session) {
     # Store current filter selections
     filter_state$current_filters <- list(
       geography_level = geography_level,
-      parent_geography = input$parent_geography,
+      state_filter = input$state_filter,
+      gcc_filter = input$gcc_filter,
       geography_name = geography_name,
       age_groups = input$age_groups,
       sexes = input$sexes,
@@ -375,53 +408,99 @@ server <- function(input, output, session) {
     }
   })
   
-  # Dynamic parent geography selection - always show states
-  output$parent_geography_ui <- renderUI({
-    if (input$geography_level == "all" || input$geography_level == "national") {
+  # Dynamic state filter (for sub-state levels only)
+  output$state_filter_ui <- renderUI({
+    if (input$geography_level %in% c("sa4", "sa3", "gcc")) {
+      # Get actual state names (geographies with level "state")
+      state_names <- population_data %>%
+        filter(geography_level == "state") %>%
+        pull(geography_name) %>%
+        unique() %>%
+        sort()
+      
+      div(
+        tags$label("Filter by State"),
+        pickerInput("state_filter",
+                    NULL,
+                    choices = state_names,
+                    selected = state_names,
+                    options = list(`actions-box` = TRUE,
+                                  `live-search` = TRUE,
+                                  `selected-text-format` = "count > 2"),
+                    multiple = TRUE)
+      )
+    } else {
       return(NULL)
     }
-    
-    # Get actual state names (geographies with level "state")
-    state_names <- population_data %>%
-      filter(geography_level == "state") %>%
-      pull(geography_name) %>%
-      unique() %>%
-      sort()
-    
-    div(
-      tags$label("Filter by State"),
-      pickerInput("parent_geography",
-                  NULL,
-                  choices = state_names,
-                  selected = state_names,
-                  options = list(`actions-box` = TRUE,
-                                `live-search` = TRUE,
-                                `selected-text-format` = "count > 2"),
-                  multiple = TRUE)
-    )
+  })
+  
+  # Dynamic GCC filter (for SA3/SA4 levels only)
+  output$gcc_filter_ui <- renderUI({
+    if (input$geography_level %in% c("sa3", "sa4")) {
+      # Get actual GCC names (geographies with level "gcc")
+      gcc_names <- population_data %>%
+        filter(geography_level == "gcc") %>%
+        pull(geography_name) %>%
+        unique() %>%
+        sort()
+      
+      div(
+        tags$label("Filter by GCC"),
+        pickerInput("gcc_filter",
+                    NULL,
+                    choices = gcc_names,
+                    selected = gcc_names,
+                    options = list(`actions-box` = TRUE,
+                                  `live-search` = TRUE,
+                                  `selected-text-format` = "count > 2"),
+                    multiple = TRUE)
+      )
+    } else {
+      return(NULL)
+    }
   })
   
   # Dynamic geography name selection
   output$geography_name_ui <- renderUI({
-    if (input$geography_level == "all") {
-      return(NULL)
-    }
-    
     # For national level, don't show geography name selection
     if (input$geography_level == "national") {
       return(NULL)
     }
     
-    # Get available geographies based on parent selection
-    if (is.null(input$parent_geography) || length(input$parent_geography) == 0) {
-      available_geographies <- get_child_geographies(population_data, input$geography_level)
-    } else {
+    # Get available geographies for the selected level
+    if (input$geography_level %in% c("sa4", "sa3", "gcc") && 
+        !is.null(input$state_filter) && length(input$state_filter) > 0) {
+      # For sub-state levels, filter by selected states
       available_geographies <- c()
-      for (parent in input$parent_geography) {
-        children <- get_child_geographies(population_data, input$geography_level, parent)
+      for (state in input$state_filter) {
+        children <- get_child_geographies(population_data, input$geography_level, state)
         available_geographies <- c(available_geographies, children)
       }
       available_geographies <- unique(available_geographies)
+    } else if (input$geography_level %in% c("sa3", "sa4") && 
+               !is.null(input$gcc_filter) && length(input$gcc_filter) > 0) {
+      # For SA3/SA4 levels, filter by selected GCC regions
+      gcc_mapping <- list(
+        "Greater Sydney" = c("Sydney Inner City", "Sydney Eastern Suburbs", "Sydney Inner West"),
+        "Greater Melbourne" = c("Melbourne City", "Melbourne Inner", "Melbourne South East"),
+        "Greater Brisbane" = c("Brisbane Inner", "Brisbane South", "Brisbane North"),
+        "Greater Adelaide" = c("Adelaide City", "Adelaide Hills", "Adelaide North"),
+        "Greater Perth" = c("Perth City", "Perth North", "Perth South"),
+        "Greater Hobart" = c(),
+        "Greater Darwin" = c(),
+        "Australian Capital Territory" = c()
+      )
+      
+      available_geographies <- c()
+      for (gcc in input$gcc_filter) {
+        if (gcc %in% names(gcc_mapping)) {
+          available_geographies <- c(available_geographies, gcc_mapping[[gcc]])
+        }
+      }
+      available_geographies <- unique(available_geographies)
+    } else {
+      # For other levels, get all geographies for the selected level
+      available_geographies <- get_child_geographies(population_data, input$geography_level)
     }
     
     if (length(available_geographies) == 0) {
