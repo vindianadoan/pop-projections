@@ -95,10 +95,7 @@ ui <- fluidPage(
       
       # Apply Filter Button
       br(),
-      actionButton("apply_filters", 
-                   "Apply Filters", 
-                   class = "btn-primary",
-                   style = "width: 100%; font-weight: bold; padding: 10px;"),
+      uiOutput("apply_filters_button"),
       
       # Reset Filter Button
       br(),
@@ -149,8 +146,104 @@ server <- function(input, output, session) {
   # Reactive values to store filter state
   filter_state <- reactiveValues(
     applied = FALSE,
-    data = NULL
+    data = NULL,
+    current_filters = list(),
+    filters_changed = FALSE
   )
+  
+  # Track filter changes - set filters_changed to TRUE when any input changes
+  observe({
+    # This reactive will trigger whenever any of these inputs change
+    input$geography_level
+    input$parent_geography
+    input$geography_name
+    input$age_groups
+    input$sexes
+    input$years
+    input$scenarios
+    input$vline_year
+    
+    # Only set filters_changed to TRUE if filters have been applied at least once
+    # and we're not currently in the process of applying filters
+    if (filter_state$applied && !is.null(filter_state$current_filters) && length(filter_state$current_filters) > 0) {
+      # Check if any current input differs from the last applied filters
+      current_inputs <- list(
+        geography_level = input$geography_level,
+        geography_name = input$geography_name,
+        age_groups = input$age_groups,
+        sexes = input$sexes,
+        years = input$years,
+        scenarios = input$scenarios
+      )
+      
+      # Compare with last applied filters
+      if (!identical(current_inputs, filter_state$current_filters)) {
+        filter_state$filters_changed <- TRUE
+      }
+    }
+  })
+  
+  # Function to generate dynamic filter message
+  generate_filter_message <- function(filters) {
+    if (is.null(filters) || length(filters) == 0) {
+      return("✅ Filters Applied")
+    }
+    
+    message_parts <- c("✅ Filters Applied:")
+    
+    # Geography level
+    if (!is.null(filters$geography_level) && filters$geography_level != "all") {
+      geo_text <- paste0("Geography: ", stringr::str_to_title(filters$geography_level))
+      if (!is.null(filters$geography_name) && length(filters$geography_name) > 0) {
+        if (length(filters$geography_name) <= 3) {
+          geo_text <- paste0(geo_text, " (", paste(filters$geography_name, collapse = ", "), ")")
+        } else {
+          geo_text <- paste0(geo_text, " (", length(filters$geography_name), " selected)")
+        }
+      }
+      message_parts <- c(message_parts, geo_text)
+    }
+    
+    # Age groups
+    if (!is.null(filters$age_groups) && length(filters$age_groups) > 0) {
+      if (length(filters$age_groups) == length(get_unique_values(population_data, "age_group"))) {
+        age_text <- "Age Groups: All"
+      } else if (length(filters$age_groups) <= 3) {
+        age_text <- paste0("Age Groups: ", paste(filters$age_groups, collapse = ", "))
+      } else {
+        age_text <- paste0("Age Groups: ", length(filters$age_groups), " selected")
+      }
+      message_parts <- c(message_parts, age_text)
+    }
+    
+    # Sex
+    if (!is.null(filters$sexes) && length(filters$sexes) > 0) {
+      if (length(filters$sexes) == length(get_unique_values(population_data, "sex"))) {
+        sex_text <- "Sex: All"
+      } else {
+        sex_text <- paste0("Sex: ", paste(filters$sexes, collapse = ", "))
+      }
+      message_parts <- c(message_parts, sex_text)
+    }
+    
+    # Years
+    if (!is.null(filters$years) && length(filters$years) == 2) {
+      year_text <- paste0("Years: ", filters$years[1], " - ", filters$years[2])
+      message_parts <- c(message_parts, year_text)
+    }
+    
+    # Scenarios
+    if (!is.null(filters$scenarios) && length(filters$scenarios) > 0) {
+      if (length(filters$scenarios) == length(get_unique_values(population_data, "scenario"))) {
+        scenario_text <- "Scenarios: All"
+      } else {
+        scenario_text <- paste0("Scenarios: ", paste(filters$scenarios, collapse = ", "))
+      }
+      message_parts <- c(message_parts, scenario_text)
+    }
+    
+    return(paste(message_parts, collapse = " | "))
+  }
   
   # Reactive data filtering - only updates when Apply Filters is clicked
   filtered_data <- reactive({
@@ -170,20 +263,35 @@ server <- function(input, output, session) {
       input$geography_level
     }
     
-    geography_name <- if (is.null(input$geography_name)) {
+    geography_name <- if (geography_level == "national") {
+      "Australia"  # Always set to Australia for national level
+    } else if (is.null(input$geography_name) || length(input$geography_name) == 0) {
       NULL
     } else {
-      input$geography_name
+      input$geography_name  # This is already a vector of selected geographies
     }
     
-    # Additional filtering by parent geography if specified
+    # Additional filtering by state if specified
     filtered_pop_data <- population_data
     
+    # Only apply parent geography filtering for sub-state levels (not for state or national)
     if (!is.null(geography_level) && !is.null(input$parent_geography) && 
-        !"all" %in% input$parent_geography && geography_level != "national") {
+        length(input$parent_geography) > 0 && 
+        geography_level != "national" && geography_level != "state") {
+      # Filter by selected states - check if the geography's parent is one of the selected states
       filtered_pop_data <- filtered_pop_data %>%
         filter(parent_geography %in% input$parent_geography)
     }
+    
+    # Debug output
+    cat("Debug apply_filters - geography_level:", geography_level, "\n")
+    cat("Debug apply_filters - geography_name:", paste(geography_name, collapse = ", "), "\n")
+    cat("Debug apply_filters - parent_geography:", paste(input$parent_geography, collapse = ", "), "\n")
+    cat("Debug apply_filters - age_groups:", paste(input$age_groups, collapse = ", "), "\n")
+    cat("Debug apply_filters - sexes:", paste(input$sexes, collapse = ", "), "\n")
+    cat("Debug apply_filters - years:", input$years[1], "to", input$years[2], "\n")
+    cat("Debug apply_filters - scenarios:", paste(input$scenarios, collapse = ", "), "\n")
+    cat("Debug apply_filters - filtered_pop_data rows:", nrow(filtered_pop_data), "\n")
     
     # Apply the filters and store the result
     filter_state$data <- filter_population_data(
@@ -196,13 +304,28 @@ server <- function(input, output, session) {
       scenarios = input$scenarios
     )
     
+    cat("Debug apply_filters - filtered data rows:", nrow(filter_state$data), "\n")
+    
+    # Store current filter selections
+    filter_state$current_filters <- list(
+      geography_level = geography_level,
+      geography_name = geography_name,
+      age_groups = input$age_groups,
+      sexes = input$sexes,
+      years = input$years,
+      scenarios = input$scenarios
+    )
+    
     filter_state$applied <- TRUE
+    filter_state$filters_changed <- FALSE  # Reset the changed flag when filters are applied
   })
   
   # Reset filters when button is clicked
   observeEvent(input$reset_filters, {
     filter_state$applied <- FALSE
     filter_state$data <- NULL
+    filter_state$current_filters <- list()
+    filter_state$filters_changed <- FALSE
     
     # Reset all inputs to default values
     updateSelectInput(session, "geography_level", selected = "state")
@@ -211,6 +334,23 @@ server <- function(input, output, session) {
     updateSliderInput(session, "years", value = c(2020, 2030))
     updateCheckboxGroupInput(session, "scenarios", selected = "Medium")
     updateSelectInput(session, "vline_year", selected = "")
+  })
+  
+  # Dynamic apply filters button
+  output$apply_filters_button <- renderUI({
+    if (!filter_state$applied || filter_state$filters_changed) {
+      # Blue button when filters haven't been applied yet OR when filters have changed
+      actionButton("apply_filters", 
+                   "Apply Filters", 
+                   class = "btn-primary",
+                   style = "width: 100%; font-weight: bold; padding: 10px; background-color: #2563eb; border-color: #2563eb;")
+    } else {
+      # Grey button when filters have been applied and haven't changed since
+      actionButton("apply_filters", 
+                   "Apply Filters", 
+                   class = "btn-secondary",
+                   style = "width: 100%; font-weight: bold; padding: 10px; background-color: #6b7280; border-color: #6b7280; color: white;")
+    }
   })
   
   # Filter status indicator
@@ -224,28 +364,34 @@ server <- function(input, output, session) {
         "Please select your filters and click 'Apply Filters' to see the data."
       )
     } else {
+      filter_message <- generate_filter_message(filter_state$current_filters)
       div(
         class = "alert alert-success",
         style = "margin-bottom: 20px;",
-        tags$strong("✅ Filters Applied")
+        tags$strong(filter_message)
       )
     }
   })
   
-  # Dynamic parent geography selection
+  # Dynamic parent geography selection - always show states
   output$parent_geography_ui <- renderUI({
     if (input$geography_level == "all" || input$geography_level == "national") {
       return(NULL)
     }
     
-    parent_geographies <- get_parent_geographies(population_data, input$geography_level)
+    # Get actual state names (geographies with level "state")
+    state_names <- population_data %>%
+      filter(geography_level == "state") %>%
+      pull(geography_name) %>%
+      unique() %>%
+      sort()
     
     div(
-      tags$label("Filter by Parent Geography"),
+      tags$label("Filter by State"),
       pickerInput("parent_geography",
                   NULL,
-                  choices = c("All" = "all", parent_geographies),
-                  selected = "all",
+                  choices = state_names,
+                  selected = state_names,
                   options = list(`actions-box` = TRUE,
                                 `live-search` = TRUE,
                                 `selected-text-format` = "count > 2"),
@@ -259,16 +405,19 @@ server <- function(input, output, session) {
       return(NULL)
     }
     
+    # For national level, don't show geography name selection
+    if (input$geography_level == "national") {
+      return(NULL)
+    }
+    
     # Get available geographies based on parent selection
-    if (is.null(input$parent_geography) || "all" %in% input$parent_geography) {
+    if (is.null(input$parent_geography) || length(input$parent_geography) == 0) {
       available_geographies <- get_child_geographies(population_data, input$geography_level)
     } else {
       available_geographies <- c()
       for (parent in input$parent_geography) {
-        if (parent != "all") {
-          children <- get_child_geographies(population_data, input$geography_level, parent)
-          available_geographies <- c(available_geographies, children)
-        }
+        children <- get_child_geographies(population_data, input$geography_level, parent)
+        available_geographies <- c(available_geographies, children)
       }
       available_geographies <- unique(available_geographies)
     }
@@ -282,7 +431,7 @@ server <- function(input, output, session) {
       pickerInput("geography_name",
                   NULL,
                   choices = available_geographies,
-                  selected = available_geographies[1],
+                  selected = available_geographies,
                   options = list(`actions-box` = TRUE,
                                 `live-search` = TRUE,
                                 `selected-text-format` = "count > 3"),
@@ -293,6 +442,13 @@ server <- function(input, output, session) {
   # Population trend plot
   output$population_trend_plot <- renderPlotly({
     data <- filtered_data()
+    
+    # Debug output
+    cat("Debug - filtered_data rows:", nrow(data), "\n")
+    if (nrow(data) > 0) {
+      cat("Debug - sample data:\n")
+      print(head(data, 2))
+    }
     
     if (nrow(data) == 0) {
       if (!filter_state$applied) {
@@ -332,13 +488,13 @@ server <- function(input, output, session) {
       theme_minimal() +
       theme(
         plot.title = element_text(size = 16, face = "bold", color = "#1f2937"),
-        axis.title = element_text(size = 12, color = "#374151"),
-        axis.text = element_text(size = 10, color = "#6b7280"),
+        axis.title = element_text(size = 14, color = "#374151"),
+        axis.text = element_text(size = 12, color = "#6b7280"),
         legend.position = "bottom",
         legend.direction = "horizontal",
         legend.box = "horizontal",
-        legend.title = element_text(size = 12, face = "bold"),
-        legend.text = element_text(size = 10),
+        legend.title = element_text(size = 14, face = "bold"),
+        legend.text = element_text(size = 12, face = "bold"),
         legend.key.width = unit(2, "cm"),
         panel.grid.major = element_line(color = "#e5e7eb", size = 0.5),
         panel.grid.minor = element_line(color = "#f3f4f6", size = 0.3),
@@ -369,7 +525,7 @@ server <- function(input, output, session) {
       nrow()
     
     # Calculate dynamic height (base height + height per facet)
-    base_height <- 200  # Base height for title, legend, etc.
+    base_height <- 250  # Base height for title, legend, etc.
     height_per_facet <- 40  # Height per facet
     dynamic_height <- base_height + (unique_combinations * height_per_facet)
     
@@ -380,14 +536,17 @@ server <- function(input, output, session) {
   output$demographics_comparison_plot <- renderPlot({
     data <- filtered_data()
     
+    # Debug output
+    cat("Debug demographics - filtered_data rows:", nrow(data), "\n")
+    
     if (nrow(data) == 0) {
       if (!filter_state$applied) {
         return(ggplot() + 
-               annotate("text", x = 0.5, y = 0.5, label = "Please apply filters to see demographics", size = 6) +
+               annotate("text", x = 0.5, y = 0.5, label = "Please apply filters to see demographics", size = 10) +
                theme_void())
       } else {
         return(ggplot() + 
-               annotate("text", x = 0.5, y = 0.5, label = "No data available for the selected filters", size = 6) +
+               annotate("text", x = 0.5, y = 0.5, label = "No data available for the selected filters", size = 10) +
                theme_void())
       }
     }
@@ -417,14 +576,14 @@ server <- function(input, output, session) {
            color = "Scenario") +
       theme_minimal() +
       theme(
-        plot.title = element_text(size = 16, face = "bold", color = "#1f2937"),
-        axis.title = element_text(size = 12, color = "#374151"),
-        axis.text = element_text(size = 10, color = "#6b7280"),
+        plot.title = element_text(size = 20, face = "bold", color = "#1f2937"),
+        axis.title = element_text(size = 16, color = "#374151"),
+        axis.text = element_text(size = 14, color = "#6b7280"),
         axis.text.x = element_text(angle = 0, hjust = 0.5),
         legend.position = "bottom",
-        legend.title = element_text(size = 12, face = "bold"),
-        legend.text = element_text(size = 10),
-        strip.text = element_text(size = 10, face = "bold", color = "#374151"),
+        legend.title = element_text(size = 16, face = "bold"),
+        legend.text = element_text(size = 14),
+        strip.text = element_text(size = 14, face = "bold", color = "#374151"),
         strip.background = element_rect(fill = "#f3f4f6", color = "#e5e7eb"),
         panel.grid.major = element_line(color = "#e5e7eb", size = 0.5),
         panel.grid.minor = element_line(color = "#f3f4f6", size = 0.3),
