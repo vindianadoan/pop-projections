@@ -14,9 +14,38 @@ library(collapse)
 library(popprojections)
 
 # Load pre-generated data efficiently
+cat("=== POPULATION PROJECTIONS DASHBOARD STARTUP ===\n")
 cat("Loading population data...\n")
 population_data <- load_population_data()
+
+# Data validation and summary
+cat("=== DATA VALIDATION ===\n")
 cat("Data loaded successfully!\n")
+cat("Total rows:", nrow(population_data), "\n")
+cat("Columns:", paste(names(population_data), collapse = ", "), "\n")
+cat("Geography levels:", paste(unique(population_data$geography_level), collapse = ", "), "\n")
+cat("Years range:", min(population_data$year), "to", max(population_data$year), "\n")
+cat("Scenarios:", paste(unique(population_data$scenario), collapse = ", "), "\n")
+cat("Age groups:", paste(unique(population_data$age_group), collapse = ", "), "\n")
+cat("Sexes:", paste(unique(population_data$sex), collapse = ", "), "\n")
+
+# Check for missing values
+missing_summary <- sapply(population_data, function(x) sum(is.na(x)))
+if (any(missing_summary > 0)) {
+  cat("WARNING: Missing values found:\n")
+  print(missing_summary[missing_summary > 0])
+} else {
+  cat("✓ No missing values found\n")
+}
+
+# Check population values
+cat("Population statistics:\n")
+cat("  Min:", min(population_data$population, na.rm = TRUE), "\n")
+cat("  Max:", max(population_data$population, na.rm = TRUE), "\n")
+cat("  Mean:", round(mean(population_data$population, na.rm = TRUE), 0), "\n")
+cat("  Total:", sum(population_data$population, na.rm = TRUE), "\n")
+
+cat("=== DASHBOARD READY ===\n")
 
 # UI
 ui <- fluidPage(
@@ -145,6 +174,9 @@ ui <- fluidPage(
 # Server
 server <- function(input, output, session) {
   
+  cat("=== SERVER STARTED ===\n")
+  cat("Session started at:", Sys.time(), "\n")
+  
   # Reactive values to store filter state
   filter_state <- reactiveValues(
     applied = FALSE,
@@ -260,9 +292,12 @@ server <- function(input, output, session) {
   
   # Apply filters when button is clicked
   observeEvent(input$apply_filters, {
+    cat("\n=== APPLYING FILTERS ===\n")
+    cat("Filter application started at:", Sys.time(), "\n")
     req(input$geography_level)
     
     geography_level <- input$geography_level
+    cat("Geography level:", geography_level, "\n")
     
     geography_name <- if (geography_level == "national") {
       "Australia"  # Always set to Australia for national level
@@ -315,16 +350,17 @@ server <- function(input, output, session) {
       }
     }
     
-    # Debug output
-    cat("Debug apply_filters - geography_level:", geography_level, "\n")
-    cat("Debug apply_filters - state_filter:", paste(input$state_filter, collapse = ", "), "\n")
-    cat("Debug apply_filters - gcc_filter:", paste(input$gcc_filter, collapse = ", "), "\n")
-    cat("Debug apply_filters - geography_name:", paste(geography_name, collapse = ", "), "\n")
-    cat("Debug apply_filters - age_groups:", paste(input$age_groups, collapse = ", "), "\n")
-    cat("Debug apply_filters - sexes:", paste(input$sexes, collapse = ", "), "\n")
-    cat("Debug apply_filters - years:", input$years[1], "to", input$years[2], "\n")
-    cat("Debug apply_filters - scenarios:", paste(input$scenarios, collapse = ", "), "\n")
-    cat("Debug apply_filters - filtered_pop_data rows:", nrow(filtered_pop_data), "\n")
+    # Detailed filter logging
+    cat("Filter parameters:\n")
+    cat("  Geography level:", geography_level, "\n")
+    cat("  State filter:", paste(input$state_filter, collapse = ", "), "\n")
+    cat("  GCC filter:", paste(input$gcc_filter, collapse = ", "), "\n")
+    cat("  Geography names:", paste(geography_name, collapse = ", "), "\n")
+    cat("  Age groups:", paste(input$age_groups, collapse = ", "), "\n")
+    cat("  Sexes:", paste(input$sexes, collapse = ", "), "\n")
+    cat("  Years:", input$years[1], "to", input$years[2], "\n")
+    cat("  Scenarios:", paste(input$scenarios, collapse = ", "), "\n")
+    cat("  Initial data rows:", nrow(filtered_pop_data), "\n")
     
     # Apply the filters and store the result
     filter_state$data <- filter_population_data(
@@ -337,7 +373,15 @@ server <- function(input, output, session) {
       scenarios = input$scenarios
     )
     
-    cat("Debug apply_filters - filtered data rows:", nrow(filter_state$data), "\n")
+    cat("  Final filtered data rows:", nrow(filter_state$data), "\n")
+    
+    if (nrow(filter_state$data) == 0) {
+      cat("WARNING: No data returned after filtering!\n")
+    } else {
+      cat("✓ Filtering successful\n")
+      cat("  Sample data preview:\n")
+      print(head(filter_state$data, 3))
+    }
     
     # Store current filter selections
     filter_state$current_filters <- list(
@@ -353,6 +397,8 @@ server <- function(input, output, session) {
     
     filter_state$applied <- TRUE
     filter_state$filters_changed <- FALSE  # Reset the changed flag when filters are applied
+    cat("Filter application completed at:", Sys.time(), "\n")
+    cat("=== FILTERS APPLIED ===\n\n")
   })
   
   # Reset filters when button is clicked
@@ -410,6 +456,9 @@ server <- function(input, output, session) {
   
   # Dynamic state filter (for sub-state levels only)
   output$state_filter_ui <- renderUI({
+    cat("\n=== RENDERING STATE FILTER UI ===\n")
+    cat("Geography level:", input$geography_level, "\n")
+    
     if (input$geography_level %in% c("sa4", "sa3", "gcc")) {
       # Get actual state names (geographies with level "state")
       state_names <- population_data %>%
@@ -417,6 +466,9 @@ server <- function(input, output, session) {
         pull(geography_name) %>%
         unique() %>%
         sort()
+      
+      cat("State filter UI: Showing", length(state_names), "states\n")
+      cat("States:", paste(state_names, collapse = ", "), "\n")
       
       div(
         tags$label("Filter by State"),
@@ -522,13 +574,16 @@ server <- function(input, output, session) {
   
   # Population trend plot
   output$population_trend_plot <- renderPlotly({
+    cat("\n=== GENERATING POPULATION TREND PLOT ===\n")
     data <- filtered_data()
     
-    # Debug output
-    cat("Debug - filtered_data rows:", nrow(data), "\n")
+    cat("Plot data rows:", nrow(data), "\n")
     if (nrow(data) > 0) {
-      cat("Debug - sample data:\n")
-      print(head(data, 2))
+      cat("Data summary:\n")
+      cat("  Unique geographies:", length(unique(data$geography_name)), "\n")
+      cat("  Unique scenarios:", paste(unique(data$scenario), collapse = ", "), "\n")
+      cat("  Year range:", min(data$year), "to", max(data$year), "\n")
+      cat("  Total population range:", min(data$population), "to", max(data$population), "\n")
     }
     
     if (nrow(data) == 0) {
@@ -583,12 +638,17 @@ server <- function(input, output, session) {
         panel.background = element_rect(fill = "white", color = NA)
       )
     
-    ggplotly(p, tooltip = c("x", "y", "colour", "linetype")) %>%
+    plotly_obj <- ggplotly(p, tooltip = c("x", "y", "colour", "linetype")) %>%
       layout(
         font = list(family = "Inter, sans-serif"),
         plot_bgcolor = "rgba(0,0,0,0)",
         paper_bgcolor = "rgba(0,0,0,0)"
       )
+    
+    cat("✓ Population trend plot generated successfully\n")
+    cat("=== PLOT COMPLETE ===\n\n")
+    
+    return(plotly_obj)
   })
   
   # Dynamic UI for demographics plot
@@ -615,10 +675,16 @@ server <- function(input, output, session) {
   
   # Demographics comparison plot
   output$demographics_comparison_plot <- renderPlot({
+    cat("\n=== GENERATING DEMOGRAPHICS PLOT ===\n")
     data <- filtered_data()
     
-    # Debug output
-    cat("Debug demographics - filtered_data rows:", nrow(data), "\n")
+    cat("Demographics plot data rows:", nrow(data), "\n")
+    if (nrow(data) > 0) {
+      cat("Demographics data summary:\n")
+      cat("  Unique age groups:", length(unique(data$age_group)), "\n")
+      cat("  Unique geographies:", length(unique(data$geography_name)), "\n")
+      cat("  Facets to generate:", length(unique(data$age_group)) * length(unique(data$geography_name)), "\n")
+    }
     
     if (nrow(data) == 0) {
       if (!filter_state$applied) {
@@ -673,11 +739,19 @@ server <- function(input, output, session) {
       )
     
     print(p)
+    cat("✓ Demographics plot generated successfully\n")
+    cat("=== DEMOGRAPHICS PLOT COMPLETE ===\n\n")
   })
   
   # Data table
   output$data_table <- DT::renderDataTable({
+    cat("\n=== GENERATING DATA TABLE ===\n")
     data <- filtered_data()
+    
+    cat("Data table rows:", nrow(data), "\n")
+    if (nrow(data) > 0) {
+      cat("Data table columns:", paste(names(data), collapse = ", "), "\n")
+    }
     
     if (nrow(data) == 0) {
       return(DT::datatable(data.frame(Message = "Please apply filters to see the data")))
@@ -721,11 +795,22 @@ server <- function(input, output, session) {
         columns = 'population',
         digits = 0
       )
+    
+    cat("✓ Data table generated successfully\n")
+    cat("=== DATA TABLE COMPLETE ===\n\n")
+    
+    return(table)
   })
   
   # Summary statistics table
   output$summary_table <- DT::renderDataTable({
+    cat("\n=== GENERATING SUMMARY TABLE ===\n")
     data <- filtered_data()
+    
+    cat("Summary table data rows:", nrow(data), "\n")
+    if (nrow(data) > 0) {
+      cat("Calculating summary statistics...\n")
+    }
     
     if (nrow(data) == 0) {
       return(DT::datatable(data.frame(Message = "Please apply filters to see summary statistics")))
@@ -761,6 +846,12 @@ server <- function(input, output, session) {
         columns = c('total_population', 'male_population', 'female_population'),
         digits = 0
       )
+    
+    cat("✓ Summary table generated successfully\n")
+    cat("Summary statistics rows:", nrow(summary_data), "\n")
+    cat("=== SUMMARY TABLE COMPLETE ===\n\n")
+    
+    return(summary_table)
   })
 }
 
