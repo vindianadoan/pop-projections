@@ -15,8 +15,6 @@ Imports:
     ggplot2,
     plotly,
     DT,
-    sf,
-    leaflet,
     shinyWidgets,
     shinyjs,
     absmapsdata,
