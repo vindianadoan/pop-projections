@@ -37,28 +37,38 @@ filter_population_data <- function(data, geography_level = NULL, geography_name 
                                   scenarios = NULL) {
   filtered_data <- data
   
+  cat("Debug filter_population_data - Input data rows:", nrow(filtered_data), "\n")
+  cat("Debug filter_population_data - geography_level:", geography_level, "\n")
+  cat("Debug filter_population_data - geography_name:", paste(geography_name, collapse = ", "), "\n")
+  
   if (!is.null(geography_level)) {
     filtered_data <- filtered_data[filtered_data$geography_level %in% geography_level, ]
+    cat("Debug filter_population_data - After geography_level filter:", nrow(filtered_data), "\n")
   }
   
   if (!is.null(geography_name)) {
     filtered_data <- filtered_data[filtered_data$geography_name %in% geography_name, ]
+    cat("Debug filter_population_data - After geography_name filter:", nrow(filtered_data), "\n")
   }
   
   if (!is.null(age_groups)) {
     filtered_data <- filtered_data[filtered_data$age_group %in% age_groups, ]
+    cat("Debug filter_population_data - After age_groups filter:", nrow(filtered_data), "\n")
   }
   
   if (!is.null(sexes)) {
     filtered_data <- filtered_data[filtered_data$sex %in% sexes, ]
+    cat("Debug filter_population_data - After sexes filter:", nrow(filtered_data), "\n")
   }
   
   if (!is.null(years)) {
     filtered_data <- filtered_data[filtered_data$year %in% years, ]
+    cat("Debug filter_population_data - After years filter:", nrow(filtered_data), "\n")
   }
   
   if (!is.null(scenarios)) {
     filtered_data <- filtered_data[filtered_data$scenario %in% scenarios, ]
+    cat("Debug filter_population_data - After scenarios filter:", nrow(filtered_data), "\n")
   }
   
   return(filtered_data)

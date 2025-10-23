@@ -169,6 +169,7 @@ server <- function(input, output, session) {
       # Check if any current input differs from the last applied filters
       current_inputs <- list(
         geography_level = input$geography_level,
+        parent_geography = input$parent_geography,
         geography_name = input$geography_name,
         age_groups = input$age_groups,
         sexes = input$sexes,
@@ -274,10 +275,10 @@ server <- function(input, output, session) {
     # Additional filtering by state if specified
     filtered_pop_data <- population_data
     
-    # Only apply parent geography filtering for sub-state levels (not for state or national)
+    # Only apply parent geography filtering for sub-state levels (not for national)
     if (!is.null(geography_level) && !is.null(input$parent_geography) && 
         length(input$parent_geography) > 0 && 
-        geography_level != "national" && geography_level != "state") {
+        geography_level != "national") {
       # Filter by selected states - check if the geography's parent is one of the selected states
       filtered_pop_data <- filtered_pop_data %>%
         filter(parent_geography %in% input$parent_geography)
@@ -309,6 +310,7 @@ server <- function(input, output, session) {
     # Store current filter selections
     filter_state$current_filters <- list(
       geography_level = geography_level,
+      parent_geography = input$parent_geography,
       geography_name = geography_name,
       age_groups = input$age_groups,
       sexes = input$sexes,
@@ -490,9 +492,9 @@ server <- function(input, output, session) {
         plot.title = element_text(size = 16, face = "bold", color = "#1f2937"),
         axis.title = element_text(size = 14, color = "#374151"),
         axis.text = element_text(size = 12, color = "#6b7280"),
-        legend.position = "bottom",
-        legend.direction = "horizontal",
-        legend.box = "horizontal",
+        # legend.position = "bottom",
+        # legend.direction = "horizontal",
+        # legend.box = "horizontal",
         legend.title = element_text(size = 14, face = "bold"),
         legend.text = element_text(size = 12, face = "bold"),
         legend.key.width = unit(2, "cm"),
