@@ -83,10 +83,10 @@ ui <- fluidPage(
       selectInput("geography_level", 
                   "Geography Level",
                   choices = c("National" = "national",
-                             "State" = "state", 
+                             "States and Territories" = "state", 
+                             "GCC" = "gcc",
                              "SA4" = "sa4",
-                             "SA3" = "sa3",
-                             "GCC" = "gcc"),
+                             "SA3" = "sa3"),
                   selected = "state"),
       
       # State Filter (for sub-state levels only)
@@ -334,31 +334,10 @@ server <- function(input, output, session) {
     if (!is.null(geography_level) && !is.null(input$gcc_filter) && 
         length(input$gcc_filter) > 0 && 
         geography_level %in% c("sa3", "sa4")) {
-      # Create a mapping of SA3/SA4 to GCC regions based on the data structure
-      # For this synthetic data, we'll use a simple mapping based on geography names
-      gcc_mapping <- list(
-        "Greater Sydney" = c("Sydney Inner City", "Sydney Eastern Suburbs", "Sydney Inner West"),
-        "Greater Melbourne" = c("Melbourne City", "Melbourne Inner", "Melbourne South East"),
-        "Greater Brisbane" = c("Brisbane Inner", "Brisbane South", "Brisbane North"),
-        "Greater Adelaide" = c("Adelaide City", "Adelaide Hills", "Adelaide North"),
-        "Greater Perth" = c("Perth City", "Perth North", "Perth South"),
-        "Greater Hobart" = c(),
-        "Greater Darwin" = c(),
-        "Australian Capital Territory" = c()
-      )
-      
-      # Get all SA3/SA4 names that belong to the selected GCC regions
-      selected_sa_names <- c()
-      for (gcc in input$gcc_filter) {
-        if (gcc %in% names(gcc_mapping)) {
-          selected_sa_names <- c(selected_sa_names, gcc_mapping[[gcc]])
-        }
-      }
-      
-      if (length(selected_sa_names) > 0) {
-        filtered_pop_data <- filtered_pop_data %>%
-          filter(geography_name %in% selected_sa_names)
-      }
+      # Filter by checking if the geography's parent is one of the selected GCC regions
+      # or if the geography itself is in the selected GCC regions
+      filtered_pop_data <- filtered_pop_data %>%
+        filter(parent_geography %in% input$gcc_filter | geography_name %in% input$gcc_filter)
     }
     
     # Detailed filter logging
@@ -543,24 +522,13 @@ server <- function(input, output, session) {
     } else if (input$geography_level %in% c("sa3", "sa4") && 
                !is.null(input$gcc_filter) && length(input$gcc_filter) > 0) {
       # For SA3/SA4 levels, filter by selected GCC regions
-      gcc_mapping <- list(
-        "Greater Sydney" = c("Sydney Inner City", "Sydney Eastern Suburbs", "Sydney Inner West"),
-        "Greater Melbourne" = c("Melbourne City", "Melbourne Inner", "Melbourne South East"),
-        "Greater Brisbane" = c("Brisbane Inner", "Brisbane South", "Brisbane North"),
-        "Greater Adelaide" = c("Adelaide City", "Adelaide Hills", "Adelaide North"),
-        "Greater Perth" = c("Perth City", "Perth North", "Perth South"),
-        "Greater Hobart" = c(),
-        "Greater Darwin" = c(),
-        "Australian Capital Territory" = c()
-      )
-      
-      available_geographies <- c()
-      for (gcc in input$gcc_filter) {
-        if (gcc %in% names(gcc_mapping)) {
-          available_geographies <- c(available_geographies, gcc_mapping[[gcc]])
-        }
-      }
-      available_geographies <- unique(available_geographies)
+      # Get all SA3/SA4 that have the selected GCC regions as their parent
+      available_geographies <- population_data %>%
+        filter(geography_level == input$geography_level,
+               parent_geography %in% input$gcc_filter) %>%
+        pull(geography_name) %>%
+        unique() %>%
+        sort()
     } else {
       # For other levels, get all geographies for the selected level
       available_geographies <- get_child_geographies(population_data, input$geography_level)
@@ -764,11 +732,27 @@ server <- function(input, output, session) {
       cat("Data table columns:", paste(names(data), collapse = ", "), "\n")
     }
     
+    # DEBUG: Add comprehensive data validation
+    cat("DEBUG: Data class:", class(data), "\n")
+    cat("DEBUG: Data dimensions:", dim(data), "\n")
+    cat("DEBUG: Data is data.frame:", is.data.frame(data), "\n")
+    cat("DEBUG: Data is matrix:", is.matrix(data), "\n")
+    cat("DEBUG: Data structure:\n")
+    str(data)
+    
     if (nrow(data) == 0) {
       return(DT::datatable(data.frame(Message = "Please apply filters to see the data")))
     }
     
-    DT::datatable(
+    # DEBUG: Ensure data is a proper data frame
+    if (!is.data.frame(data)) {
+      cat("ERROR: Data is not a data frame! Converting...\n")
+      data <- as.data.frame(data)
+      cat("DEBUG: After conversion - Data class:", class(data), "\n")
+      cat("DEBUG: After conversion - Data dimensions:", dim(data), "\n")
+    }
+    
+    dt_table <- DT::datatable(
       data,
       options = list(
         pageLength = 25,
@@ -810,7 +794,7 @@ server <- function(input, output, session) {
     cat("✓ Data table generated successfully\n")
     cat("=== DATA TABLE COMPLETE ===\n\n")
     
-    return(table)
+    return(dt_table)
   })
   
   # Summary statistics table
@@ -829,7 +813,7 @@ server <- function(input, output, session) {
     
     summary_data <- calculate_summary_stats(data)
     
-    DT::datatable(
+    dt_summary <- DT::datatable(
       summary_data,
       options = list(
         pageLength = 25,
@@ -862,7 +846,7 @@ server <- function(input, output, session) {
     cat("Summary statistics rows:", nrow(summary_data), "\n")
     cat("=== SUMMARY TABLE COMPLETE ===\n\n")
     
-    return(summary_table)
+    return(dt_summary)
   })
 }
 
